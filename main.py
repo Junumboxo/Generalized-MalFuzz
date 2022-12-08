@@ -7,6 +7,7 @@ import tlsh
 import random
 
 np.random.seed(42)
+random.seed(42)
 
 def get_entry(f, label):
     hash_value = tlsh.hash(f)
@@ -107,25 +108,44 @@ paths, indices = clf_1.decision_path(X_train)
 from sklearn.metrics.pairwise import pairwise_distances
 from scipy.sparse import vstack
 misclassfied = 0
+benign = 0
+malware = 0
 false_positive = 0
 false_negative = 0
 mis_order = []
 new_states = 0
 accuracy = []
-epochs = 500
+epochs = 1500
+new_seeds_benign = []
+new_seeds_malware = []
 # choose a seed randomly
 for i in range(0, epochs):
-    if random.random() < .5:
-        new_i = random.randint(0, len(benign_bytes) - 1)
-        candidate = benign_bytes[new_i]
-        label = 0
-        new_seed = injection(candidate, label)
+    if len(new_seeds_malware) !=  0 and random.random() < .5:
+        new_i = random.randint(0, len(new_seeds_malware) - 1)
+        candidate = new_seeds_malware[new_i]
+        new_seeds_malware.pop(new_i)
+        label = 1
+        malware+=1
+    # elif len(new_seeds_benign) !=  0:
+    #     new_i = random.randint(0, len(new_seeds_benign) - 1)
+    #     candidate = new_seeds_benign[new_i]
+    #     label = 0
+    #     new_seeds_benign.pop(new_i)
+    #     benign+=1
+    # elif random.random() < .5:
+    #     new_i = random.randint(0, len(benign_bytes) - 1)
+    #     candidate = benign_bytes[new_i]
+    #     label = 0
+    #     benign_bytes.pop(new_i)
+    #     benign+=1
     else:
         new_i = random.randint(0, len(malware_bytes) - 1)
         candidate = malware_bytes[new_i]
         label = 1
-        new_seed = injection(candidate, label)
-
+        malware_bytes.pop(new_i)
+        malware+=1
+        
+    new_seed = injection(candidate, label)
     new_seed_dict = get_entry(new_seed, label)
     new_seed_dict.pop('malware')
     new_seed_ready = pd.Series(new_seed_dict)
@@ -144,21 +164,24 @@ for i in range(0, epochs):
     distances = []
     new_path, ind = clf_1.decision_path(np.reshape(new_seed_ready.values, (1, -1)))
     for path in paths:
-        distance = pairwise_distances(path.toarray(), new_path.toarray(), metric='manhattan')
+        distance = pairwise_distances(path.toarray(), new_path.toarray(), metric='euclidean')
+        #distance = np.sum(np.abs(path.toarray()[0] - new_path.toarray()[0]))
         distances.append(distance)
-    if np.min(distances) > 90:
+    if  np.min(distances) > 3:
+    #if np.min(distances) > len(new_path.toarray()[0])*0.15:
+        #print(np.min(distances))
         X_train.append(new_seed_ready.rename('new'))
         y_train.append(pd.Series(label).rename('new'))
-        clf_1.fit(X_train, y_train)
+        if i % 100 == 0:
+            clf_1.fit(X_train, y_train)
         paths, indices = clf_1.decision_path(X_train)
-        y_pred = clf_1.predict(X_test)
-        accuracy.append(metrics.accuracy_score(y_test, y_pred))
         if label == 0:
-            benign_bytes.append(new_seed)
+            new_seeds_benign.append(new_seed)
         else:
-            malware_bytes.append(new_seed)
+            new_seeds_malware.append(new_seed)
         new_states += 1
 # %%
+clf_1.fit(X_train, y_train)
 y_pred_1 = clf_1.predict(X_train)
 y_pred_2 = clf_1.predict(X_test)
 print("ACCURACY OF THE MODEL (TRAIN): ", metrics.accuracy_score(y_train, y_pred_1))
@@ -168,5 +191,7 @@ print(accuracy)
 print(mis_order)
 print(false_positive)
 print(false_negative)
+print(benign)
+print(malware)
 #%%
-np.add.reduceat(mis_order, np.arange(0, len(mis_order), 10))
+print(np.add.reduceat(mis_order, np.arange(0, len(mis_order), 10)))
